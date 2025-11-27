@@ -1,0 +1,254 @@
+### 1 Variable ###
+
+#The packages we will use frequently need to be called before using functions
+library(forecast)
+library(stats)
+library(datasets)
+library(seasonal) 
+library(readxl)
+
+########################################################################
+
+# 1. Import the Data 
+  # Importing data from the directory (notice that your directories will be different!)
+  data <- read_excel("C:/Users/dinok/OneDrive/Desktop/Uni/1 Semester/Business Forecasting/Notes & Codes/shampoo_sales.xlsx")
+  View(data)
+
+# 2. Convert to time Series 
+  # convert to time series 
+  data_ts <- ts(data$Sales, start = c(1995, 1), frequency = 12)
+
+#3. PLot the Data 
+  #Plotting the series (this can be done in so many ways, type ??plot in the console to read the help file)
+  ts.plot(data_ts)
+
+#4. Decomposition
+  #decompose the data type Classic
+  x <- decompose(data_ts, type = c("additive"), filter = NULL)
+  plot(x)
+  #Series has stable and regular seasonality.
+  #Data is not noisy and trend/seasonal patterns are simple.
+  #Quick and simple method for understanding data structure.
+  #Seat decomposition
+  y <- stl(data_ts, s.window="periodic")
+  plot(y)
+  # Seasonality is stochastic (changing over time)
+  # Series is complex or long-term
+  # Works well for monthly or quarterly economic data over many years.
+  # Handles irregularities better than classical decomposition.
+  # Official statistical purposes
+  #x11 fit 
+  x11_fit <- seas(data_ts, x11 = "")
+  summary(x11_fit)
+  autoplot (x11_fit)
+  # Economic or financial time series with complex seasonal patterns.
+  # Series may have outliers or trading-day effects.
+  # You want seasonally adjusted data for policy or forecasting.
+
+#5. ACF and PACF Plot
+  #Plotting all three components together ACF and PACF
+  library(ggplot2)
+  tsdisplay(data_ts)
+
+#6. ADF & KPSS Test 
+  # Run the ADF Test 
+  install.packages("tseries")
+  library(tseries)
+  adf_result <- adf.test(data_ts)
+  adf_result
+  # p-value smaller as 0.05 → reject H₀ → series is stationary
+  # p-value ≥ 0.05 → fail to reject H₀ → series is non-stationary
+
+# Run the KPSS Test 
+  install.packages("urca")
+  library(urca)
+  kpss_result <- ur.kpss(data_ts)
+  summary(kpss_result)
+  # Test statistic < 10% critical value: fail to reject H₀ → series is stationary
+  # Test statistic between 10% and 5% CV: borderline; likely stationary
+  # Test statistic between 5% and 2.5% CV: weakly non-stationary → may need differencing
+  # Test statistic > 1% critical value: reject H₀ → series is non-stationary
+  # in this case series is non stationary as 0.901 > 0.739
+
+# 7. Split the Data 
+  # ----------------------------------------------------------
+  # Percent-based Train/Test Split (automatic)
+  # ----------------------------------------------------------
+  
+  # Example: 80% training
+  train_ratio <- 0.8
+  
+  n <- length(data_ts)
+  split_point <- floor(train_ratio * n)
+  
+  # TRAIN
+  train_y <- data_ts[1:split_point]
+
+  # TEST
+  test_y <- data_ts[(split_point + 1):n]
+  
+  # Forecast horizon = size of the test set
+  h <- length(test_y)
+  
+  cat("Train length:", length(train_y), "\n")
+  cat("Test length:", length(test_y), "\n")
+  cat("Forecast horizon h:", h, "\n")
+
+
+
+
+# 2 Variables  
+# # Load Data (Excel with 2 tables)
+  # ------------------------------
+  # Table 1: historical data
+  data_hist <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 1)
+  # Table 2: future independent variable (e.g., temperature forecast)
+  data_future <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 3)
+  data_hist
+  data_future
+  
+  head(data_hist)
+  head(data_future)
+  str(data_hist)
+  str(data_future)
+  
+  # ------------------------------
+  # Convert to Time Series
+  # ------------------------------
+  # Replace start and frequency according to your data
+  y_ts <- ts(data_hist$`Passenger arrival`, start=c(2019,1), frequency=12)
+  x_ts <- ts(data_hist$`Stringency Index`, start=c(2019,1), frequency=12)
+  # If future x is needed later:
+  x_future_ts <- ts(data_future$`Stringency index`, start=c(2025,1), frequency=12)
+
+# start with the main variable
+  # ACF and PACF Plot
+  #Plotting all three components together ACF and PACF
+  library(ggplot2)
+  tsdisplay(y_ts)
+  
+  # ADF & KPSS Test 
+  # Run the ADF Test 
+  install.packages("tseries")
+  library(tseries)
+  adf_result <- adf.test(y_ts)
+  adf_result
+  # p-value smaller as 0.05 → reject H₀ → series is stationary
+  # p-value ≥ 0.05 → fail to reject H₀ → series is non-stationary
+  
+  # Run the KPSS Test 
+  install.packages("urca")
+  library(urca)
+  kpss_result <- ur.kpss(y_ts)
+  summary(kpss_result)
+  # Test statistic < 10% critical value: fail to reject H₀ → series is stationary
+  # Test statistic between 10% and 5% CV: borderline; likely stationary
+  # Test statistic between 5% and 2.5% CV: weakly non-stationary → may need differencing
+  # Test statistic > 1% critical value: reject H₀ → series is non-stationary
+  # in this case series is non stationary as 0.901 > 0.739
+  
+  #4. Decomposition
+  #decompose the data type Classic
+  y <- decompose(y_ts, type = c("additive"), filter = NULL)
+  plot(y)
+  #Series has stable and regular seasonality.
+  #Data is not noisy and trend/seasonal patterns are simple.
+  #Quick and simple method for understanding data structure.
+  #Seat decomposition
+  y <- stl(y_ts, s.window="periodic")
+  plot(y)
+  # Seasonality is stochastic (changing over time)
+  # Series is complex or long-term
+  # Works well for monthly or quarterly economic data over many years.
+  # Handles irregularities better than classical decomposition.
+  # Official statistical purposes
+  #x11 fit 
+  x11_fit <- seas(y_ts, x11 = "")
+  summary(x11_fit)
+  autoplot (x11_fit)
+  # Economic or financial time series with complex seasonal patterns.
+  # Series may have outliers or trading-day effects.
+  # You want seasonally adjusted data for policy or forecasting.
+  
+#Do the same for the x variable
+  # ACF and PACF Plot
+  #Plotting all three components together ACF and PACF
+  library(ggplot2)
+  tsdisplay(x_ts)
+  
+  # ADF & KPSS Test 
+  # Run the ADF Test 
+  install.packages("tseries")
+  library(tseries)
+  adf_result <- adf.test(x_ts)
+  adf_result
+  # p-value smaller as 0.05 → reject H₀ → series is stationary
+  # p-value ≥ 0.05 → fail to reject H₀ → series is non-stationary
+  
+  # Run the KPSS Test 
+  install.packages("urca")
+  library(urca)
+  kpss_result <- ur.kpss(x_ts)
+  summary(kpss_result)
+  # Test statistic < 10% critical value: fail to reject H₀ → series is stationary
+  # Test statistic between 10% and 5% CV: borderline; likely stationary
+  # Test statistic between 5% and 2.5% CV: weakly non-stationary → may need differencing
+  # Test statistic > 1% critical value: reject H₀ → series is non-stationary
+  # in this case series is non stationary as 0.901 > 0.739
+  
+  # Decomposition
+  #decompose the data type Classic
+  x <- decompose(x_ts, type = c("additive"), filter = NULL)
+  plot(x)
+  #Series has stable and regular seasonality.
+  #Data is not noisy and trend/seasonal patterns are simple.
+  #Quick and simple method for understanding data structure.
+  #Seat decomposition
+  x <- stl(x_ts, s.window="periodic")
+  plot(x)
+  # Seasonality is stochastic (changing over time)
+  # Series is complex or long-term
+  # Works well for monthly or quarterly economic data over many years.
+  # Handles irregularities better than classical decomposition.
+  # Official statistical purposes
+  #x11 fit 
+  x11_fit <- seas(x_ts, x11 = "")
+  summary(x11_fit)
+  autoplot (x11_fit)
+  # Economic or financial time series with complex seasonal patterns.
+  # Series may have outliers or trading-day effects.
+  # You want seasonally adjusted data for policy or forecasting.
+
+# Split the Data 
+# ----------------------------------------------------------
+  # Percent-based Train/Test Split (automatic)
+  # ----------------------------------------------------------
+  
+  # Example: 80% training
+  train_ratio <- 0.8
+  
+  n <- length(y_ts)
+  split_point <- floor(train_ratio * n)
+  
+  # TRAIN
+  train_y <- y_ts[1:split_point]
+  train_x <- x_ts[1:split_point]
+  
+  # TEST
+  test_y <- y_ts[(split_point + 1):n]
+  test_x <- x_ts[(split_point + 1):n]
+  
+  # Forecast horizon = size of the test set
+  h <- length(test_y)
+  
+  cat("Train length:", length(train_y), "\n")
+  cat("Test length:", length(test_y), "\n")
+  cat("Forecast horizon h:", h, "\n")
+  
+
+# Check
+length(train_y)
+length(test_y)
+length(train_x)
+length(test_x)
+lentgh(h)
