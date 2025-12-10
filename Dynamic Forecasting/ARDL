@@ -1,0 +1,189 @@
+############################################
+# FINAL ARDL WORKFLOW (FULLY WORKING)
+############################################
+options(scipen = 999)
+library(readxl)
+library(ARDL)
+library(lmtest)
+library(tseries)
+library(Metrics)
+
+# ------------------------------
+# 1. Load Data
+# ------------------------------
+df <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 1)
+df_future <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 3)
+# needs to be updated 
+# file name
+# sheet numbers (if your data is in different sheets)
+
+# Standardize column names
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+# Extract series
+y <- as.numeric(df$`passenger arrival`)
+x <- as.numeric(df$`stringency index`)
+x_future <- as.numeric(df_future$`stringency index`)
+# needs to be updated 
+# `passenger arrival`
+# `stringency index`
+# `stringency index`
+
+n <- length(y)
+
+# ------------------------------
+# 2. Train/Test Split
+# ------------------------------
+split <- floor(0.8 * n)
+train_y <- y[1:split]
+test_y  <- y[(split+1):n]
+
+train_x <- x[1:split]
+test_x  <- x[(split+1):n]
+
+train_data <- data.frame(y=train_y, x=train_x)
+
+# ------------------------------
+# 3. ADF Tests
+# ------------------------------
+print(adf.test(train_y))
+print(adf.test(train_x))
+
+# ------------------------------
+# 4. AUTO ARDL
+# ------------------------------
+model <- auto_ardl(
+  y ~ x,
+  data = train_data,
+  max_order = c(10, 10),
+  selection = "AIC"
+)
+# Update 
+# max_order can most of the time stay the same 
+# but If you have 40 observations → max lags of 10 is too high → use (4,4).
+best_model <- model$best_model
+print(summary(best_model))
+best_model$order
+
+# ------------------------------
+# 5. TRUE p AND q (EXTRACTED FROM COEFFICIENT NAMES)
+# ------------------------------
+coef_names <- names(coef(best_model))
+
+# detect p (max lag of y)
+p <- max(as.numeric(gsub("L\\(y, |\\)", "", 
+                         grep("L\\(y,", coef_names, value=TRUE))))
+
+# detect q (max lag of x)  → plus 1 because x starts at lag 0
+q <- max(as.numeric(gsub("L\\(x, |\\)", "", 
+                         grep("L\\(x,", coef_names, value=TRUE)))) + 1
+
+cat("TRUE LAG ORDER  p =", p, "   q =", q, "\n")
+
+# ------------------------------
+# 6. Diagnostics
+# ------------------------------
+print(bptest(best_model))
+print(jarque.bera.test(residuals(best_model)))
+print(dwtest(best_model))
+
+# ------------------------------
+# 7. DYNAMIC FORECAST FUNCTION (DEFINE BEFORE USING IT)
+# ------------------------------
+ardl_dynamic <- function(model, y_hist, x_full, h, p, q) {
+  
+  coefs <- coef(model)
+  cn <- names(coefs)
+  
+  # intercept
+  intercept <- if("(Intercept)" %in% cn) coefs["(Intercept)"] else 0
+  
+  # lag coefficients for Y
+  beta <- sapply(1:p, function(k)
+    if (paste0("L(y, ", k, ")") %in% cn) coefs[paste0("L(y, ", k, ")")] else 0)
+  
+  # lag coefficients for X
+  gamma <- sapply(0:(q-1), function(k)
+    if (paste0("L(x, ", k, ")") %in% cn) coefs[paste0("L(x, ", k, ")")] else 0)
+  
+  y_pred <- numeric(h)
+  
+  for (t in 1:h) {
+    yl <- if (p > 0) rev(tail(c(y_hist, y_pred[1:(t-1)]), p)) else numeric(0)
+    xl <- if (q > 0) rev(x_full[(length(y_hist)+t-q):(length(y_hist)+t-1)]) else numeric(0)
+    
+    y_pred[t] <- intercept + sum(beta * yl) + sum(gamma * xl)
+  }
+  
+  return(y_pred)
+}
+
+# ------------------------------
+# 8. BACKTEST FORECAST
+# ------------------------------
+x_full_hist <- c(train_x, test_x)
+
+fc_test <- ardl_dynamic(
+  model = best_model,
+  y_hist = train_y,
+  x_full = x_full_hist,
+  h = length(test_y),
+  p = p,
+  q = q
+)
+
+# ------------------------------
+# Backtest Error Metrics
+# ------------------------------
+rmse_ARDL <- rmse(test_y, fc_test)
+mae_ARDL  <- mae(test_y, fc_test)
+mape_ARDL <- mean(abs((test_y - fc_test) / test_y)) * 100
+
+cat("\nBacktest Error Metrics:\n")
+print(data.frame(
+  RMSE = rmse_ARDL,
+  MAE  = mae_ARDL,
+  MAPE = mape_ARDL
+))
+
+
+
+# it its the best model
+# ------------------------------
+# 9. FUTURE FORECAST A (USING SHEET 3)
+# ------------------------------
+x_full_futureA <- c(x, x_future)
+
+fc_future_A <- ardl_dynamic(
+  model = best_model,
+  y_hist = y,
+  x_full = x_full_futureA,
+  h = length(x_future),
+  p = p,
+  q = q
+)
+
+cat("\nFuture Forecast (Using sheet 3 X):\n")
+print(fc_future_A)
+plot(fc_future_A)
+
+# ------------------------------
+# 10. FUTURE FORECAST B (CONSTANT X)
+# ------------------------------
+h_futureB <- 12
+# can be adapted to forecast horizon if dont want 12 
+x_full_futureB <- c(x, rep(tail(x,1), h_futureB))
+
+fc_future_B <- ardl_dynamic(
+  best_model,
+  y,
+  x_full_futureB,
+  h_futureB,
+  p,
+  q
+)
+
+cat("\nFuture Forecast (Constant X):\n")
+print(fc_future_B)
+plot(fc_future_B)
