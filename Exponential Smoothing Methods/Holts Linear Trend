@@ -1,0 +1,101 @@
+#The packages we will use frequently need to be called before using functions
+library(forecast)
+library(stats)
+library(datasets)
+library(readxl)
+library(smooth)
+
+# Example monthly data from Jan 2019 to Dec 2020
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+data_ts <- ts(data, start=c(2019,1), frequency=12)
+
+# Split into train/test (optional for later evaluation)
+train_ts <- window(data_ts, end=c(2019,9))
+test_ts <- window(data_ts, start=c(2019,10), end=c(2019,12))
+length (test_ts) #get the lengt of the test_ts
+h <- length(test_ts)
+
+
+# Fit Holt's Linear Trend
+holt_fit1 <- holt(train_ts, h = h, damped = FALSE)
+holt_fit2 <- holt(train_ts, h = h, damped = TRUE)
+holt_fit1
+holt_fit2
+plot(holt_fit1)
+plot(holt_fit2)
+# Short-term forecasts → damped = FALSE is usually fine.
+# Long-term forecasts or when growth cannot continue indefinitely → damped = TRUE.
+
+# Error metrics
+rmse_holt_fit1 <- rmse(test_ts, as.numeric(holt_fit1$mean))
+mae_holt_fit1  <- mae(test_ts, as.numeric(holt_fit1$mean))
+mape_holt_fit1 <- mean(abs((test_ts - as.numeric(holt_fit1$mean))/test_ts))*100
+
+rmse_holt_fit2 <- rmse(test_ts, as.numeric(holt_fit2$mean))
+mae_holt_fit2  <- mae(test_ts, as.numeric(holt_fit2$mean))
+mape_holt_fit2 <- mean(abs((test_ts - as.numeric(holt_fit2$mean))/test_ts))*100
+
+
+#Comparison Table
+Compare_Models <- data.frame(
+  Model = c("Holt Linear", "Holt Damped"),
+  RMSE  = c(rmse_holt_fit1, rmse_holt_fit2),
+  MAE   = c(mae_holt_fit1, mae_holt_fit2),
+  MAPE  = c(mape_holt_fit1, mape_holt_fit2)
+)
+
+print(Compare_Models)
+
+
+
+
+# if its the best model 
+final_model <- holt(data_ts, h = ..., damped = TRUE)  # h = forecast horizon you need to set manually
+# Generate the forecast
+final_forecast <- final_model$mean  # for smooth::es()
+final_forecast
+plot(final_forecast)
+
+#or to plot
+
+# ------------------------------
+# Dynamic Date Sequence for Plotting
+# ------------------------------
+start_year   <- start(data_ts)[1]
+start_period <- start(data_ts)[2]
+
+# Default: first day of month/quarter/year
+start_date <- as.Date(paste(start_year, start_period, "01", sep="-")) #if not first date update 
+
+n_total <- length(data_ts) + final_h
+freq <- frequency(data_ts)
+
+date_seq <- switch(as.character(freq),
+                   "12" = seq(start_date, by="month", length.out=n_total),
+                   "4"  = seq(start_date, by="quarter", length.out=n_total),
+                   "1"  = seq(start_date, by="year", length.out=n_total),
+                   seq(start_date, by="day", length.out=n_total))  # default for other frequencies
+
+# ------------------------------
+# Prepare Plotting DataFrame
+# ------------------------------
+forecast_df <- data.frame(
+  Date     = date_seq,
+  Value    = c(as.numeric(data_ts), rep(NA, final_h)),
+  Forecast = c(rep(NA, length(data_ts)), as.numeric(final_model$mean)),
+  Lower80  = c(rep(NA, length(data_ts)), final_model$lower[,1]),
+  Upper80  = c(rep(NA, length(data_ts)), final_model$upper[,1]),
+  Lower95  = c(rep(NA, length(data_ts)), final_model$lower[,2]),
+  Upper95  = c(rep(NA, length(data_ts)), final_model$upper[,2])
+)
+
+# ------------------------------
+# Plot Forecast with Intervals
+# ------------------------------
+ggplot(forecast_df, aes(x=Date)) +
+  geom_line(aes(y=Value), color="black") +
+  geom_line(aes(y=Forecast), color="blue") +
+  geom_ribbon(aes(ymin=Lower80, ymax=Upper80), fill="blue", alpha=0.2) +
+  geom_ribbon(aes(ymin=Lower95, ymax=Upper95), fill="blue", alpha=0.1) +
+  labs(title="Holt Damped Forecast with Intervals", y="Value", x="Date")
