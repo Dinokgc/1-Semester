@@ -1,0 +1,103 @@
+#The packages we will use frequently need to be called before using functions
+library(forecast)
+library(stats)
+library(datasets)
+library(readxl)
+library(smooth)
+library(Metrics)
+
+# Example monthly data from Jan 2019 to Dec 2020
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+data_ts <- ts(data, start=c(2019,1), frequency=12)
+
+# Split into train/test (optional for later evaluation)
+train_ts <- window(data_ts, end=c(2019,9))
+test_ts <- window(data_ts, start=c(2019,10), end=c(2019,12))
+length (test_ts) #get the lengt of the test_ts
+h <- length(test_ts)
+
+#####SES Filtering####
+
+# Step 1: Simple Adaptive Filtering Forecast
+  adaptive_filter <- function(series, alpha_base = 0.3, adapt_factor = 0.2){
+  n <- length(series)
+  filtered <- numeric(n)
+  filtered[1] <- series[1]  # initialize first value
+  for(t in 2:n){
+    # adapt alpha based on magnitude of change
+    alpha_t <- min(0.9, max(0.1, alpha_base + adapt_factor * abs(series[t] - filtered[t-1])/100))
+    filtered[t] <- filtered[t-1] + alpha_t * (series[t] - filtered[t-1])
+  }
+  return(filtered)
+}
+
+# Step 2: Simple Adaptive Filtering Forecast
+  best_rmse <- Inf
+  best_alpha <- NA
+  best_adapt <- NA
+  
+  for(a in seq(0.1, 1, 0.1)){
+    for(f in seq(0.1, 1, 0.1)){
+      filtered <- adaptive_filter(train_ts, alpha_base=a, adapt_factor=f)
+      forecast <- rep(tail(filtered,1), h)
+      error <- rmse(test_ts, forecast)
+      if(error < best_rmse){
+        best_rmse <- error
+        best_alpha <- a
+        best_adapt <- f
+      }
+    }
+  }
+  
+  cat("Best alpha_base:", best_alpha, "\n")
+  cat("Best adapt_factor:", best_adapt, "\n")
+  cat("Best RMSE:", best_rmse, "\n")
+
+# Step 3. Forecast with best parameters
+  filtered_train_best <- adaptive_filter(train_ts, alpha_base = best_alpha, adapt_factor = best_adapt)
+  forecast_adaptive_best <- rep(tail(filtered_train_best,1), h)
+
+plot(filtered_train_best)
+plot(forecast_adaptive_best)
+
+# Numeric vectors: forecast_adaptive_best and test_ts
+  
+  # Numeric vectors: forecast_adaptive_best and test_ts
+  errors <- test_ts - forecast_adaptive_best
+  
+  # RMSE
+  rmse_adaptive <- sqrt(mean(errors^2))
+  
+  # MAE
+  mae_adaptive <- mean(abs(errors))
+  
+  # MAPE
+  mape_adaptive <- mean(abs(errors / test_ts)) * 100
+  
+  # Combine into a table
+  Compare_Models <- data.frame(
+    Model = "Adaptive SES",
+    RMSE  = rmse_adaptive,
+    MAE   = mae_adaptive,
+    MAPE  = mape_adaptive
+  )
+  
+  Compare_Models
+  
+
+  
+  
+# if it is the best model 
+# Forecast horizon for final forecast (e.g., next 3 months)
+final_h <- ... # however many periods you want to forecast
+  
+# Apply adaptive filter to full dataset with best parameters found
+filtered_full <- adaptive_filter(data_ts, alpha_base = best_alpha, adapt_factor = best_adapt)
+
+# Naive forecast from last filtered value
+final_forecast_adaptive <- rep(tail(filtered_full, 1), final_h)
+
+final_forecast_adaptive
+
+plot(final_forecast_adaptive)
