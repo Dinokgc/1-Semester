@@ -1,0 +1,85 @@
+library(tseries)
+library(urca)
+
+
+# -------------------------------------------------------
+# 1. LOAD DATA
+# -------------------------------------------------------
+library(readxl)
+df <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx")
+df
+
+# Rename for convenience
+y <- df$`Passenger arrival`
+x <- df$`Stringency Index`
+
+# Create daily time series (start: 2020-02-27)
+start_date <- as.Date("2020-02-27")
+start_year <- as.numeric(format(start_date, "%Y"))
+start_doy  <- as.numeric(format(start_date, "%j"))
+
+freq <- 365  # daily data
+
+y_ts <- ts(y, start = c(start_year, start_doy), frequency = freq)
+x_ts <- ts(x, start = c(start_year, start_doy), frequency = freq)
+
+# ----------------------------
+# 2. ADF TESTS (stationarity)
+# ----------------------------
+adf_y <- adf.test(y_ts)
+adf_x <- adf.test(x_ts)
+
+adf_y
+adf_x
+# Check if variables are stationary or not 
+# Check: p < 0.05 → stationary (I(0))
+# p > 0.05 → non-stationary (I(1))
+
+# Case 1: If BOTH variables are stationary
+#   → ALL models are allowed
+#   → No cointegration test needed
+
+# Case 2: If ONE variable is stationary AND the other is non-stationary
+#   → Use ADL / ARDL models
+#   → Cointegration test is NOT needed (ARDL handles mixed orders)
+
+# Case 3: If BOTH variables are non-stationary
+#   → You MUST test for cointegration (Engle–Granger or Phillips–Ouliaris)
+#      - If cointegrated: use ECM / VECM or regression in levels
+#      - If NOT cointegrated: difference the data and use ADL / VAR / ARIMA
+
+
+# ----------------------------
+# 3. → COINTEGRATION TESTS (only if both non-stationary)
+# ----------------------------
+
+# 4A: Engle–Granger (Residual ADF test)
+eg_model <- lm(y_ts ~ x_ts)
+eg_resid <- residuals(eg_model)
+adf_resid <- adf.test(eg_resid)
+adf_resid
+# Check: p < 0.05 → variables ARE cointegrated
+#        p > 0.05 → NOT cointegrated
+
+# 4B: Phillips–Ouliaris test
+po <- po.test(cbind(y_ts, x_ts))
+po
+# Check: p < 0.05 → cointegrated
+#        p > 0.05 → NOT cointegrated
+
+# ----------------------------
+# 5. MODEL CHOICE (based on results)
+# ----------------------------
+
+# If BOTH I(0):
+#    → Use Regression, ADL, ARDL, VAR, ARIMA (anything is allowed)
+
+# If MIXED integration:
+#    → Use ADL or ARDL (BEST CHOICE)
+
+# If BOTH I(1) AND NOT cointegrated:
+#    → Difference variables → use ADL/VAR/ARIMA on differenced data
+
+# If BOTH I(1) AND cointegrated:
+#    → Use ECM or VECM
+#    → Static regression (Y ~ X) is valid long-run model
