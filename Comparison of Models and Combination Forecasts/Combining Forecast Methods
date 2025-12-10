@@ -1,0 +1,135 @@
+####combining forecast models####
+
+
+#----------------------------------------
+# 1) BUILD ERROR TABLE FROM YOUR MODELS
+#----------------------------------------
+# Example: use YOUR test errors and test forecasts (fc_*_test)
+
+error_table <- data.frame(
+  Model = c("ARIMA", "VAR", "ADL", "ARDL"),
+  RMSE  = c(rmse_ARIMA, rmse_VAR, rmse_ADL, rmse_ARDL),
+  MAE   = c(mae_ARIMA, mae_VAR, mae_ADL, mae_ARDL),
+  MAPE  = c(mape_ARIMA, mape_VAR, mape_ADL, mape_ARDL)
+)
+# if you wwant to add models just add them after "ARDL")
+
+# Sort by RMSE (best on top)
+error_table <- error_table[order(error_table$RMSE), ]
+print(error_table)
+
+cat("\n❗ Choose 2–3 best models manually from ranking above.\n")
+
+#----------------------------------------
+#  2) MANUALLY SELECT 2–3 BEST MODELS
+#----------------------------------------
+best_models <- c("ARIMA", "VAR", "ARDL")    # <-- YOU CHOOSE
+#Now collect only those forecasts:
+fc_test_mat <- cbind(
+  ARIMA = fc_ARIMA_test,
+  VAR   = fc_VAR_test,
+  ARDL  = fc_ARDL_test
+)
+#"ARIMA", "VAR"; or other models must be same as next line when doing ARIMA = fc_ARIMA_test or VAR = fc_VAR_test
+# fc_ARIMA_test is from when we tried the single model 
+
+# keep needed columns only
+fc_test_mat <- fc_test_mat[, best_models, drop = FALSE]
+# nothing needs to be updated 
+
+
+#----------------------------------------
+#3) EQUAL WEIGHTS (on TEST)
+#----------------------------------------
+fc_ew_test <- rowMeans(fc_test_mat)
+
+rmse_EW  <- Metrics::rmse(test_y, fc_ew_test)
+mae_EW   <- Metrics::mae(test_y, fc_ew_test)
+mape_EW  <- mean(abs((test_y - fc_ew_test) / test_y)) * 100
+
+plot(fc_ew_test)
+
+#----------------------------------------
+#  4) GRANGER–RAMANATHAN (on TEST)
+#----------------------------------------
+df_gr <- data.frame(y = test_y, fc_test_mat)
+gr_model <- lm(y ~ ., data = df_gr)
+
+fc_gr_test <- predict(gr_model)
+
+rmse_GR  <- Metrics::rmse(test_y, fc_gr_test)
+mae_GR   <- Metrics::mae(test_y, fc_gr_test)
+mape_GR  <- mean(abs((test_y - fc_gr_test) / test_y)) * 100
+
+plot(fc_gr_test)
+
+#----------------------------------------
+#  5) COMPARE EW vs GR → choose best combiner
+#----------------------------------------
+combo_table <- data.frame(
+  Method = c("EW", "GR"),
+  RMSE   = c(rmse_EW, rmse_GR),
+  MAE    = c(mae_EW, mae_GR),
+  MAPE   = c(mape_EW, mape_GR)
+)
+
+print(combo_table)
+
+best_combo <- combo_table$Method[ which.min(combo_table$RMSE) ]
+cat("\n➡ BEST COMBINATION METHOD:", best_combo, "\n")
+
+#----------------------------------------
+#6) SET SPECIFIC FORECAST HORIZON
+#----------------------------------------
+h_future <- 12     # <---- SET FORECAST HORIZON HERE
+cat("\nUsing future forecast horizon =", h_future, "\n")
+# Select forecast horizon 
+
+# ----------------------------------------
+#7) GET FUTURE FORECASTS FROM INDIVIDUAL MODELS
+#----------------------------------------
+#Before Step 7, you must refit each single model on the entire 
+#dataset if you want your final combined forecast to be based on the whole data.
+# if Arima is best model fit whole data on ARIMA 
+fc_ARIMA_future <- 
+# if var is second best model fit whole data on VAr
+  fc_VAR_future <-   
+
+fc_future_map <- list(
+  ARIMA = fc_ARIMA_future,
+  VAR   = fc_VAR_future,
+  ARDL  = fc_ARDL_future
+)
+
+fc_future_mat <- do.call(cbind, fc_future_map[best_models])
+# here models can be added or removed just again ARIMA, Var needts to fit above 
+# model is from the model we used when we did the single models 
+
+#----------------------------------------
+#  8) FINAL COMBINED FORECAST (EW or GR)
+#----------------------------------------
+#EW future forecast:
+fc_ew_future <- rowMeans(fc_future_mat)
+
+#GR future forecast:
+gr_coefs <- coef(gr_model)
+a0 <- gr_coefs[1]        # intercept
+weights <- gr_coefs[-1]  # weights for chosen models
+
+fc_gr_future <- as.numeric(a0 + fc_future_mat %*% weights)
+
+#----------------------------------------
+#  9) USE THE BEST COMBINATION FOR FINAL FORECAST
+#----------------------------------------
+if(best_combo == "EW"){
+  final_forecast <- fc_ew_future
+} else {
+  final_forecast <- fc_gr_future
+}
+
+print(final_forecast)
+
+plot(final_forecast, type="l", col="blue", lwd=2,
+     main=paste("Final Combined Forecast (", best_combo, ")"),
+     ylab="Forecast", xlab="Horizon")
+
