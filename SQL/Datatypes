@@ -1,0 +1,26 @@
+-- Create a schema called BI
+create schema BI;
+
+-- Data types
+create table BI.books (
+	ID serial primary key,        #(Each new row automatically gets the next number (1, 2, 3…).)
+	Title char(250),              #(If the title is shorter than 250 characters, spaces are added to make it 250.)
+	Description varchar(250),     #(a variable-length string up to 250 characters.)
+	price decimal(5,2),           #(decimal number with:5 digits total 2 digits after the decimal point Example: 100.32 is valid, 12345.67 is too big.)
+	register_time timestamp,      #(date and time, down to seconds. Example: '2015-09-10 00:00:00'.)
+	publish_date date,            #(only the date, no time. Example: '2014-02-01'.)
+	hardback boolean,             #(boolean = true/false (or 1/0). In your insert: '0' = false, '1' = true.)
+	own_ranking integer,          #(integer = whole number (no decimals).Example: 3, 5, 8.)
+	own_notes text);              #(text = variable-length string, no length limit. Good for long notes or descriptions.)
+-- Insert into table
+insert into BI.books
+	values (default, 'SQL cookbook', 'Interesting read', 100.32, '2015-09-10 00:00:00', '2014-02-01', '0', 3, 'Possibly long note 1' )
+	,(default, 'SQL for beginners', 'Nice introduction',  13.475, '2001-02-04 00:00:00', '1999-12-01', '1', 5, null)
+	,(default, 'Advanced SQL', 'Good for the experienced user', 15, '2019-11-01 00:00:00', '2018-11-15', null, 8, 'Possibly long note 3');
+-- View table
+select *
+from BI.books;
+
+-- Drop table and schema
+drop table BI.books;
+drop schema BI;
