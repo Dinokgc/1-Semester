@@ -1,0 +1,67 @@
+# ------------------------------
+# Holt–Winters (Additive, Damped) Forecast Workflow
+# ------------------------------
+
+# Load libraries
+library(forecast)
+library(Metrics)
+library(ggplot2)
+
+# ------------------------------
+# Data
+# ------------------------------
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+
+data_ts <- ts(data, start = c(2019,1), frequency = 12)
+
+# ------------------------------
+# Train / Test Split
+# ------------------------------
+train_ts <- window(data_ts, end = c(2019,9))
+test_ts  <- window(data_ts, start = c(2019,10))
+h <- length(test_ts)
+
+# ------------------------------
+# Fit Holt–Winters (Additive, Damped)
+# ------------------------------
+hw_model <- hw(train_ts,
+               seasonal = "additive",
+               damped   = TRUE,
+               h        = h)
+
+# ------------------------------
+# Accuracy
+# ------------------------------
+hw_metrics <- accuracy(hw_model$mean, test_ts)
+
+rmse_hw  <- hw_metrics["Test set", "RMSE"]
+mae_hw   <- hw_metrics["Test set", "MAE"]
+mape_hw  <- hw_metrics["Test set", "MAPE"]
+
+Model_Performance <- data.frame(
+  Model = "Holt–Winters Additive Damped",
+  RMSE  = rmse_hw,
+  MAE   = mae_hw,
+  MAPE  = mape_hw
+)
+
+Model_Performance
+
+
+# ------------------------------
+# Final Model on Full Dataset
+# ------------------------------
+final_h <- 6
+
+final_model <- hw(data_ts,
+                  seasonal = "additive",
+                  damped   = TRUE,
+                  h        = final_h)
+
+# ------------------------------
+# Forecast Plot
+# ------------------------------
+plot(final_model,
+     main = "Holt–Winters Additive Damped Forecast",
+     ylab = "Value", xlab = "Time")
