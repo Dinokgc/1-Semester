@@ -1,0 +1,137 @@
+#############################
+# Simple Regression Workflow
+#############################
+options(scipen = 999)
+
+# ------------------------------
+# Load Libraries
+# ------------------------------
+library(readxl)
+library(Metrics)
+library(ggplot2)
+library(lmtest)
+library(tseries)
+
+# ------------------------------
+# Load Data
+# ------------------------------
+df <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 1)
+df_future <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 3)
+
+# ------------------------------
+# Convert to Time Series (Daily Annual Seasonality)
+# ------------------------------
+freq <- 365
+start_date <- as.Date("2020-02-27")   # FIRST DATE of sheet 1
+
+start_year <- as.numeric(format(start_date, "%Y"))
+start_doy  <- as.numeric(format(start_date, "%j"))
+
+# Y = Passenger Arrivals
+y_ts <- ts(df$`Passenger arrival`,
+           start = c(start_year, start_doy),
+           frequency = freq)
+
+# X = Stringency Index
+x_ts <- ts(df$`Stringency Index`,
+           start = c(start_year, start_doy),
+           frequency = freq)
+
+# FUTURE X (Sheet 2)
+future_start <- as.Date("2021-10-18")
+future_year <- as.numeric(format(future_start, "%Y"))
+future_doy  <- as.numeric(format(future_start, "%j"))
+
+x_future_ts <- ts(df_future$`Stringency index`,
+                  start = c(future_year, future_doy),
+                  frequency = freq)
+
+# ------------------------------
+# Train/Test Split (80/20)
+# ------------------------------
+split_point <- floor(0.8 * length(y_ts))
+
+train_y <- y_ts[1:split_point]
+train_x <- x_ts[1:split_point]
+
+test_y  <- y_ts[(split_point+1):length(y_ts)]
+test_x  <- x_ts[(split_point+1):length(x_ts)]
+
+h <- length(test_y)
+
+# ------------------------------
+# Fit Simple Regression
+# ------------------------------
+simple_model <- lm(train_y ~ train_x)
+summary(simple_model)
+
+# ------------------------------
+# Diagnostics (what the results mean)
+# ------------------------------
+cat("\nBreusch–Pagan Test:\n")
+print(bptest(simple_model))
+# p > 0.05 → GOOD (constant variance)
+# p < 0.05 → BAD (heteroscedastic but still usable for forecasting)
+# Consider robust SE if doing inference.
+
+cat("\nJarque-Bera Test:\n")
+print(jarque.bera.test(residuals(simple_model)))
+# p > 0.05 → GOOD (normal residuals)
+# p < 0.05 → NOT IDEAL but OK for forecasting
+
+cat("\nDurbin-Watson Test:\n")
+print(dwtest(simple_model))
+# p > 0.05 → GOOD (no autocorrelation)
+# p < 0.05 → VERY BAD → regression not valid → use ARDL/ADL/ARIMA instead
+
+# ------------------------------
+# Forecast Test Set (Backtest)
+# ------------------------------
+fc_test <- predict(simple_model,
+                   newdata = data.frame(train_x = test_x))
+
+# ------------------------------
+# Error Metrics
+# ------------------------------
+rmse_simple <- rmse(test_y, fc_test)
+mae_simple  <- mae(test_y, fc_test)
+mape_simple <- mean(abs((test_y - fc_test)/test_y)) * 100
+
+cat("\nBacktest Error Metrics:\n")
+print(data.frame(
+  RMSE = rmse_simple,
+  MAE  = mae_simple,
+  MAPE = mape_simple
+))
+
+# ------------------------------
+# Plot Backtest
+# ------------------------------
+plot(fc_test, type="l", col="blue", lwd=2,
+     main="Simple Regression – Backtest Forecast",
+     ylab="Passenger Arrivals", xlab="Test Period")
+lines(test_y, col="black", lwd=2)
+
+
+# if the model performs best 
+# ------------------------------
+# FINAL MODEL (fit on FULL DATA)
+# ------------------------------
+final_model <- lm(y_ts ~ x_ts)
+summary(final_model)
+
+# ------------------------------
+# FUTURE FORECAST (using future X)
+# ------------------------------
+final_h <- length(x_future_ts)
+
+fc_future <- predict(final_model,
+                     newdata = data.frame(x_ts = x_future_ts))
+fc_future
+
+# ------------------------------
+# Plot Final Forecast
+# ------------------------------
+ts.plot(fc_future, col="red", lwd=2,
+        main="Final Future Forecast (Simple Regression)",
+        ylab="Passenger Arrivals")
