@@ -1,0 +1,255 @@
+############################################
+# FINAL ADL WORKFLOW (FULLY WORKING)
+############################################
+options(scipen = 999)
+
+library(readxl)
+library(lmtest)
+library(tseries)
+library(Metrics)
+
+# ------------------------------
+# 1. Load Data
+# ------------------------------
+df <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 1)
+df_future <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 3)
+# needs to be updated:
+# - file name
+# - sheet numbers (if your data is in different sheets)
+
+# Standardize column names
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+# Extract series (update these column names for other datasets)
+y <- as.numeric(df$`passenger arrival`)
+x <- as.numeric(df$`stringency index`)
+x_future <- as.numeric(df_future$`stringency index`)
+# needs to be updated:
+# `passenger arrival`
+# `stringency index`
+# `stringency index`
+
+n <- length(y)
+
+# ------------------------------
+# 2. Train/Test Split
+# ------------------------------
+split <- floor(0.8 * n)
+train_y <- y[1:split]
+test_y  <- y[(split+1):n]
+
+train_x <- x[1:split]
+test_x  <- x[(split+1):n]
+
+# ------------------------------
+# 3. ADF Tests
+# ------------------------------
+cat("\nADF test on Y (train):\n")
+print(adf.test(train_y))
+
+cat("\nADF test on X (train):\n")
+print(adf.test(train_x))
+
+# ------------------------------
+# 4. Helper: build ADL regression data for given (p, q)
+# ------------------------------
+build_adl_data <- function(y, x, p, q) {
+  n <- length(y)
+  if (p == 0 && q == 0) stop("Both p and q are 0; no regressors.")
+  
+  # t index where all lags are available
+  t_start <- max(1 + p, if (q > 0) q else 1)
+  if (t_start > n) return(NULL)
+  
+  T <- n - t_start + 1
+  if (T < 5) return(NULL)
+  
+  # response
+  y_resp <- y[t_start:n]
+  df <- data.frame(y = y_resp)
+  
+  # Y lags: y_{t-1}, ..., y_{t-p}
+  if (p > 0) {
+    for (j in 1:p) {
+      df[[paste0("y_l", j)]] <- y[(t_start - j):(n - j)]
+    }
+  }
+  
+  # X lags: x_{t}, x_{t-1}, ..., x_{t-(q-1)}
+  if (q > 0) {
+    for (j in 0:(q-1)) {
+      df[[paste0("x_l", j)]] <- x[(t_start - j):(n - j)]
+    }
+  }
+  
+  return(df)
+}
+
+# ------------------------------
+# 5. AUTO ADL (AIC-based lag search)
+# ------------------------------
+max_p <- 10   # can be reduced for small samples
+max_q <- 10   # can be reduced for small samples
+# Big dataset (> 200 obs): change to 12 12 
+# Medium dataset (50–200 obs): change to 10 10 
++# Small dataset (< 50 obs): change to 4 4 
+
+best_aic   <- Inf
+best_model <- NULL
+best_p     <- NA_integer_
+best_q     <- NA_integer_
+
+for (p in 0:max_p) {
+  for (q in 0:max_q) {
+    if (p == 0 && q == 0) next  # skip empty model
+    
+    df_lag <- build_adl_data(train_y, train_x, p, q)
+    if (is.null(df_lag)) next
+    
+    # build formula y ~ all lag columns
+    rhs <- setdiff(names(df_lag), "y")
+    f <- as.formula(paste("y ~", paste(rhs, collapse = " + ")))
+    
+    m <- lm(f, data = df_lag)
+    a <- AIC(m)
+    
+    if (a < best_aic) {
+      best_aic   <- a
+      best_model <- m
+      best_p     <- p
+      best_q     <- q
+    }
+  }
+}
+
+cat("\nBest ADL order found: p =", best_p, "q =", best_q, "\n")
+cat("Best model AIC:", best_aic, "\n")
+cat("\nBest ADL model summary:\n")
+print(summary(best_model))
+
+# ------------------------------
+# 6. Diagnostics
+# ------------------------------
+cat("\nBreusch-Pagan test:\n")
+print(bptest(best_model))
+
+cat("\nJarque-Bera test:\n")
+print(jarque.bera.test(residuals(best_model)))
+
+cat("\nDurbin-Watson test:\n")
+print(dwtest(best_model))
+
+# ------------------------------
+# 7. ADL DYNAMIC FORECAST FUNCTION
+# ------------------------------
+adl_dynamic <- function(model, y_hist, x_full, h, p, q) {
+  coefs <- coef(model)
+  
+  # intercept
+  alpha <- if ("(Intercept)" %in% names(coefs)) coefs["(Intercept)"] else 0
+  
+  # beta: Y-lag coefficients (y_l1..y_lp) in order
+  beta <- if (p > 0) {
+    coefs[paste0("y_l", 1:p)]
+  } else {
+    numeric(0)
+  }
+  
+  # gamma: X-lag coefficients (x_l0..x_l(q-1)) in order
+  gamma <- if (q > 0) {
+    coefs[paste0("x_l", 0:(q-1))]
+  } else {
+    numeric(0)
+  }
+  
+  T_hist <- length(y_hist)
+  y_pred <- numeric(h)
+  
+  for (t in 1:h) {
+    # Y lags: y_{t-1}, ..., y_{t-p}
+    y_lags <- if (p > 0) {
+      rev(tail(c(y_hist, y_pred[1:(t-1)]), p))
+    } else {
+      numeric(0)
+    }
+    
+    # X lags: x_{t}, x_{t-1}, ..., x_{t-(q-1)}
+    x_lags <- if (q > 0) {
+      ts <- T_hist + t
+      sapply(0:(q-1), function(j) x_full[ts - j])
+    } else {
+      numeric(0)
+    }
+    
+    y_pred[t] <- alpha + sum(beta * y_lags) + sum(gamma * x_lags)
+  }
+  
+  return(y_pred)
+}
+
+# ------------------------------
+# 8. BACKTEST FORECAST
+# ------------------------------
+x_full_hist <- c(train_x, test_x)
+
+fc_test <- adl_dynamic(
+  model = best_model,
+  y_hist = train_y,
+  x_full = x_full_hist,
+  h = length(test_y),
+  p = best_p,
+  q = best_q
+)
+
+# ------------------------------
+# Backtest Error Metrics
+# ------------------------------
+rmse_ADL <- rmse(test_y, fc_test)
+mae_ADL  <- mae(test_y, fc_test)
+mape_ADL <- mean(abs((test_y - fc_test) / test_y)) * 100
+
+cat("\nBacktest Error Metrics (ADL):\n")
+print(data.frame(
+  RMSE = rmse_ADL,
+  MAE  = mae_ADL,
+  MAPE = mape_ADL
+))
+
+# ------------------------------
+# 9. FUTURE FORECAST A (USING FUTURE X)
+# ------------------------------
+x_full_futureA <- c(x, x_future)
+
+fc_future_A <- adl_dynamic(
+  model = best_model,
+  y_hist = y,
+  x_full = x_full_futureA,
+  h = length(x_future),
+  p = best_p,
+  q = best_q
+)
+
+cat("\nFuture Forecast (Using sheet 3 X):\n")
+print(fc_future_A)
+plot(fc_future_A, type = "l", main = "ADL Forecast - Using sheet 3 X")
+
+
+# ------------------------------
+# 10. FUTURE FORECAST B (CONSTANT X)
+# ------------------------------
+h_futureB <- 12  # can be adapted to forecast horizon
+x_full_futureB <- c(x, rep(tail(x, 1), h_futureB))
+
+fc_future_B <- adl_dynamic(
+  model = best_model,
+  y_hist = y,
+  x_full = x_full_futureB,
+  h = h_futureB,
+  p = best_p,
+  q = best_q
+)
+
+cat("\nFuture Forecast (Constant X):\n")
+print(fc_future_B)
+plot(fc_future_B, type = "l", main = "ADL Forecast - Constant X")
