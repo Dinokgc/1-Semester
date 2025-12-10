@@ -1,0 +1,157 @@
+####Moving Averages ######
+library(forecast)
+
+# Example monthly data from Jan 2019 to Dec 2020
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+data_ts <- ts(data, start=c(2019,1), frequency=12)
+
+# Split into train/test (optional for later evaluation)
+train_ts <- window(data_ts, end=c(2019,9))
+test_ts <- window(data_ts, start=c(2019,10))
+length (test_ts) #get the lengt of the test_ts
+h <- length(test_ts)  # forecast horizon matches test set
+
+
+#### Example: Moving Average Forecast ####
+
+# Moving Average window 3 
+  ma_order <- 3
+  
+  # Rolling MA forecast
+  last_values <- tail(train_ts, ma_order)
+  ma_forecast3 <- numeric(h)
+  
+  for(i in 1:h){
+    ma_forecast3[i] <- mean(last_values)
+    last_values <- c(tail(last_values, ma_order-1), ma_forecast3[i])
+  }
+  
+  # Generate future time points
+  future_times <- time(train_ts)[length(train_ts)] + 
+    seq(1/frequency(train_ts), h/frequency(train_ts), by=1/frequency(train_ts))
+  
+# Moving Average window 6
+  ma_order <- 6
+  
+  # Rolling MA forecast
+  last_values <- tail(train_ts, ma_order)
+  ma_forecast6 <- numeric(h)
+  
+  for(i in 1:h){
+    ma_forecast6[i] <- mean(last_values)
+    last_values <- c(tail(last_values, ma_order-1), ma_forecast6[i])
+  }
+  
+  # Generate future time points
+  future_times <- time(train_ts)[length(train_ts)] + 
+    seq(1/frequency(train_ts), h/frequency(train_ts), by=1/frequency(train_ts))
+
+# Moving Average window 12
+  ma_order <- 12
+  
+  # Rolling MA forecast
+  last_values <- tail(train_ts, ma_order)
+  ma_forecast12 <- numeric(h)
+  
+  for(i in 1:h){
+    ma_forecast12[i] <- mean(last_values)
+    last_values <- c(tail(last_values, ma_order-1), ma_forecast12[i])
+  }
+  
+  # Generate future time points
+  future_times <- time(train_ts)[length(train_ts)] + 
+    seq(1/frequency(train_ts), h/frequency(train_ts), by=1/frequency(train_ts))
+
+# If you want to compare the three forecasts, it might be easier to combine them into a single dataframe:
+  ma_forecast_df <- data.frame(
+    Time = future_times,
+    MA3  = ma_forecast3,
+    MA6  = ma_forecast6,
+    MA12 = ma_forecast12
+  )
+  print(ma_forecast_df)
+  
+  
+plot(ma_forecast3)  
+plot(ma_forecast6)
+plot(ma_forecast12)
+
+# Calculate error metrics for each MA window
+install.packages("Metrics")
+library(Metrics)  # optional, or use manual calculation
+
+# RMSE
+rmse_ma3  <- rmse(as.numeric(test_ts), ma_forecast_df$MA3)
+rmse_ma6  <- rmse(as.numeric(test_ts), ma_forecast_df$MA6)
+rmse_ma12 <- rmse(as.numeric(test_ts), ma_forecast_df$MA12)
+
+# MAE
+mae_ma3  <- mae(as.numeric(test_ts), ma_forecast_df$MA3)
+mae_ma6  <- mae(as.numeric(test_ts), ma_forecast_df$MA6)
+mae_ma12 <- mae(as.numeric(test_ts), ma_forecast_df$MA12)
+
+# MAPE
+mape_ma3  <- mean(abs((as.numeric(test_ts) - ma_forecast_df$MA3)/as.numeric(test_ts)))*100
+mape_ma6  <- mean(abs((as.numeric(test_ts) - ma_forecast_df$MA6)/as.numeric(test_ts)))*100
+mape_ma12 <- mean(abs((as.numeric(test_ts) - ma_forecast_df$MA12)/as.numeric(test_ts)))*100
+
+# Combine all metrics into a data frame
+Compare_Models <- data.frame(
+  MA_Window = c("MA3", "MA6", "MA12"),
+  RMSE = c(rmse_ma3, rmse_ma6, rmse_ma12),
+  MAE  = c(mae_ma3, mae_ma6, mae_ma12),
+  MAPE = c(mape_ma3, mape_ma6, mape_ma12)
+)
+
+# View the table
+print(Compare_Models)
+
+
+
+
+# if one of those models wins 
+moving_average_forecast <- function(series, window, h) {
+  last_vals <- tail(series, window)
+  forecast_vals <- numeric(h)
+  
+  for (i in 1:h) {
+    forecast_vals[i] <- mean(last_vals)
+    last_vals <- c(tail(last_vals, window-1), forecast_vals[i])
+  }
+  
+  return(forecast_vals)
+}
+
+#Generate the final Moving Average forecast
+best_window <- 6       # <- replace with MA3 or MA12 if those win
+h <- ...                 # Forecast next 6 months (example), needs to set manually
+
+final_ma_forecast <- moving_average_forecast(data_ts, window = best_window, h = h)
+final_ma_forecast
+plot(final_ma_forecast)
+
+
+library(ggplot2)
+
+# Create date vector for historical + forecast
+start_date <- as.Date("2019-01-01")  # adjust if needed
+all_dates <- seq(start_date, by="month", length.out = length(data_ts) + h)
+
+# Create dataframe
+ma_df <- data.frame(
+  Date = all_dates,
+  Actual = c(as.numeric(data_ts), rep(NA, h)),
+  Forecast = c(rep(NA, length(data_ts)), final_ma_forecast)
+)
+
+# Plot
+ggplot(ma_df, aes(x=Date)) +
+  geom_line(aes(y=Actual), color="black") +
+  geom_line(aes(y=Forecast), color="blue") +
+  labs(title=paste("Final Moving Average Forecast (Window =", best_window, ")"),
+       y="Value", x="Date")
+
+
+
+
