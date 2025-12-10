@@ -1,0 +1,94 @@
+# ------------------------------
+# Exponential Trend Forecast Workflow
+# ------------------------------
+
+# Load libraries
+library(forecast)
+library(Metrics)
+library(ggplot2)
+
+# ------------------------------
+# Example Data
+# ------------------------------
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+data_ts <- ts(data, start=c(2019,1), frequency=12)  # adjust start/freq as needed
+
+# ------------------------------
+# Train/Test Split (optional)
+# ------------------------------
+train_ts <- window(data_ts, end=c(2019,9))
+test_ts  <- window(data_ts, start=c(2019,10))
+forecast_horizon <- length(test_ts)  # or set manually
+
+# ------------------------------
+# Fit Exponential Trend Model
+# ------------------------------
+exp_fit <- ets(train_ts, model="MNN")  # M = multiplicative trend, N = no seasonality
+exp_fc  <- forecast(exp_fit, h=forecast_horizon)
+plot(exp_fc)
+
+# ------------------------------
+# Calculate Error Metrics
+# ------------------------------
+rmse_exp  <- rmse(as.numeric(test_ts), as.numeric(exp_fc$mean))
+mae_exp   <- mae(as.numeric(test_ts), as.numeric(exp_fc$mean))
+mape_exp  <- mean(abs((as.numeric(test_ts) - as.numeric(exp_fc$mean))/as.numeric(test_ts))) * 100
+
+Compare_Models <- data.frame(
+  Model = "Exponential Trend",
+  RMSE  = rmse_exp,
+  MAE   = mae_exp,
+  MAPE  = mape_exp
+)
+print(Compare_Models)
+
+
+
+# ------------------------------
+# If Exponential Trend is Best Model → Fit Full Dataset & Plot
+# ------------------------------
+# Here we assume it is the best model; you can replace with logic to select best model
+final_h <- ...  # forecast next 6 periods needs to be changed manully 
+final_exp_fit <- ets(data_ts, model="MNN")
+final_exp_fc  <- forecast(final_exp_fit, h=final_h)
+final_exp_fc
+plot(final_exp_fc)
+
+
+#or 
+# Dynamic Dates for plotting
+start_year   <- start(data_ts)[1]
+start_period <- start(data_ts)[2]
+start_date <- as.Date("2019-01-01") #("YYYY-MM-DD")  # exact first date of your datase
+
+
+n_total <- length(data_ts) + final_h
+freq <- frequency(data_ts)
+
+date_seq <- switch(as.character(freq),
+                   "12" = seq(start_date, by = "month",   length.out = n_total),   # monthly
+                   "4"  = seq(start_date, by = "quarter", length.out = n_total),   # quarterly
+                   "52" = seq(start_date, by = "week",    length.out = n_total),   # weekly (NEW)
+                   "1"  = seq(start_date, by = "year",    length.out = n_total),   # yearly
+                   seq(start_date, by = "day", length.out = n_total))              # default: daily / unknown frequency
+
+
+# Prepare plotting dataframe
+forecast_df <- data.frame(
+  Date     = date_seq,
+  Value    = c(as.numeric(data_ts), rep(NA, final_h)),
+  Forecast = c(rep(NA, length(data_ts)), as.numeric(final_exp_fc$mean)),
+  Lower80  = c(rep(NA, length(data_ts)), final_exp_fc$lower[,1]),
+  Upper80  = c(rep(NA, length(data_ts)), final_exp_fc$upper[,1]),
+  Lower95  = c(rep(NA, length(data_ts)), final_exp_fc$lower[,2]),
+  Upper95  = c(rep(NA, length(data_ts)), final_exp_fc$upper[,2])
+)
+
+# Plot
+ggplot(forecast_df, aes(x=Date)) +
+  geom_line(aes(y=Value), color="black") +
+  geom_line(aes(y=Forecast), color="blue") +
+  geom_ribbon(aes(ymin=Lower80, ymax=Upper80), fill="blue", alpha=0.2) +
+  geom_ribbon(aes(ymin=Lower95, ymax=Upper95), fill="blue", alpha=0.1) +
+  labs(title="Exponential Trend Forecast on Full Dataset", y="Value", x="Date")
