@@ -1,0 +1,62 @@
+# Naive Forecast
+library(forecast)
+
+#create vector to hold actual sales data
+actual <- c(34,37,44,47,48,48,46,43,32,27,26,24,
+            35,38,45,48,49,50,47,44,33,28,27,25)
+#convert to time series 
+data_ts <- ts(actual, start=c(1995,1), frequency=12)  # monthly data
+
+#Split the Data 
+train_ts <- window(data_ts, end=c(1996,8))  # first year
+test_ts <- window(data_ts, start=c(1996,9))  # second year
+length (test_ts) #get the lengt of the test_ts
+h <- length(test_ts)  # forecast horizon matches test set
+
+# Naive forecast for the next period(s)
+Naive_fc <- naive(train_ts, h = h)   # forecast 12 months ahead
+#view naive forecasts
+Naive_fc
+# plot forecast 
+plot(Naive_fc)
+
+# Calculate error metrics for naive out sample
+install.packages("Metrics")
+library(Metrics)
+
+# RMSE
+rmse_naive <- rmse(test_ts, as.numeric(Naive_fc$mean))
+# MAE
+mae_naive <- mae(test_ts, as.numeric(Naive_fc$mean))
+# MAPE
+mape_naive <- mean(abs((test_ts - as.numeric(Naive_fc$mean))/test_ts)) * 100
+
+# Combine all metrics into a data frame
+Compare_Models <- data.frame(
+  Model = "Naive",
+  RMSE  = rmse_naive,
+  MAE   = mae_naive,
+  MAPE  = mape_naive
+)
+
+# View the table
+print(Compare_Models)
+
+
+
+
+# if its the best model 
+library(forecast)
+
+# Fit Naive model on entire dataset
+final_naive_model <- naive(data_ts, h = ....)  # forecast next period(s) H= forecast horizon needs to set manually
+
+# View forecast
+final_naive_model
+
+#plot 
+plot(final_naive_model, main="Naive Forecast with Intervals",
+     xlab="Time", ylab="Value", flty=2)
+
+plot(final_naive_model, main="Naive Forecast with Intervals",
+     xlab="Time", ylab="Value", flty=2)
