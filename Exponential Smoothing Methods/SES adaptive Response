@@ -1,0 +1,68 @@
+#The packages we will use frequently need to be called before using functions
+library(forecast)
+library(stats)
+library(datasets)
+library(readxl)
+install.packages ("smooth")  # only once
+library(smooth)
+
+# Example monthly data from Jan 2019 to Dec 2020
+data <- c(120,130,125,140,150,145,160,155,165,170,175,180,
+          185,190,195,200,205,210,215,220,225,230,235,240)
+data_ts <- ts(data, start=c(2019,1), frequency=12)
+
+# Split into train/test (optional for later evaluation)
+train_ts <- window(data_ts, end=c(2019,9))
+test_ts <- window(data_ts, start=c(2019,10), end=c(2019,12))
+h <- length(test_ts)
+
+##### SES Adaptive ######
+# Adaptive Exponential Smoothing using smooth::es()
+ses_adaptive_fc <- es(train_ts, model="ANN", h=h)  # ANN = additive level, no trend, no seasonality
+ses_adaptive_fc
+ses_adaptive_fc$forecast
+
+# Extract the FORECAST VECTOR (numeric)
+ses_adaptive_fc_num <- ses_adaptive_fc$forecast
+
+#plot the forecast 
+plot(ses_adaptive_fc$forecast)
+
+# Calculate error metrics for SES out sample
+ses_adaptive_fc_num_metrics <- accuracy(ses_adaptive_fc_num, test_ts)
+ses_adaptive_fc_num_metrics
+
+#Extract Rmse, Mae and mape 
+rmse_ses_adaptive_fc_num <- ses_adaptive_fc_num_metrics["Test set", "RMSE"]
+mae_ses_adaptive_fc_num  <- ses_adaptive_fc_num_metrics["Test set", "MAE"]
+mape_ses_adaptive_fc_num <- ses_adaptive_fc_num_metrics["Test set", "MAPE"]
+
+#Combine metrics into a comparison table
+Compare_Models <- data.frame(
+  Model = "SES Adaptive",
+  RMSE  = rmse_ses_adaptive_fc_num,
+  MAE   = mae_ses_adaptive_fc_num,
+  MAPE  = mape_ses_adaptive_fc_num
+)
+Compare_Models
+
+# if its the best model 
+library(smooth)
+
+# Forecast horizon for final forecast (e.g., next 6 months)
+final_h <- ... #needs to be set manually the forecast time you want to forecast 
+
+# Fit Adaptive SES on the full dataset
+final_ses_model <- es(data_ts, model="ANN", h=final_h)  # ANN = additive level only
+final_ses_model
+
+# extract numeric vector 
+final_forecast_ses <- final_ses_model$forecast
+final_forecast_ses
+
+plot(final_ses_model, main="Adaptive SES Forecast on Full Dataset", xlab="Time", ylab="Value")
+
+
+
+
+
