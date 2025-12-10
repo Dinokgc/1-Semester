@@ -1,0 +1,473 @@
+############################################
+# FINAL VAR WORKFLOW — WITH STABILITY CHECK + EXPLANATIONS
+############################################
+options(scipen = 999)
+
+library(readxl)
+library(xts)
+library(tseries)
+library(lmtest)
+library(Metrics)
+library(vars)
+
+# ------------------------------
+# 1. Load Data
+# ------------------------------
+df <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 1)
+df_future <- read_excel("C:/Users/dinok/Downloads/Excel for Use Cases Test.xlsx", sheet = 3)
+# needs to be updated:
+# update file names
+# update sheet numbers
+
+# STANDARDIZE COLUMN NAMES
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+# USER UPDATES THESE NAMES
+y <- as.numeric(df$`passenger arrival`)
+x <- as.numeric(df$`stringency index`)
+x_future <- as.numeric(df_future$`stringency index`)
+# needs to be updated:
+# y <- as.numeric(df$`passenger arrival`)
+# x <- as.numeric(df$`stringency index`)
+# x_future <- as.numeric(df_future$`stringency index`)
+
+
+# ------------------------------
+# 2. DAILY DATE INDEX
+# ------------------------------
+start_date <- as.Date("2020-08-10")
+dates <- seq.Date(start_date, by = "day", length.out = length(y))
+data_xts <- xts(cbind(y, x), order.by = dates)
+# needs to be updated: 
+# If new dataset starts on a different date → update this.
+
+# ------------------------------
+# 3. TRAIN/TEST SPLIT
+# ------------------------------
+split <- floor(0.8 * nrow(data_xts))
+train_xts <- data_xts[1:split, ]
+test_xts  <- data_xts[(split+1):nrow(data_xts), ]
+test_y <- test_xts$y
+
+# ------------------------------
+# 4. ADF TESTS
+# ------------------------------
+cat("\nADF test Y:\n"); print(adf.test(train_xts$y))
+cat("\nADF test X:\n"); print(adf.test(train_xts$x))
+
+# ------------------------------
+# 5. LAG SELECTION (AIC vs BIC EXPLANATION)
+# ------------------------------
+cat("\n===== VAR Lag Selection Table =====\n")
+lag_sel <- VARselect(train_xts, lag.max = 15, type = "const")
+print(lag_sel)
+# needs to be updated lag.max=15
+# Sample Size         Recommended lag.max
+# < 100               5-10
+# 100 - 300           10-15
+# >300                20-30
+# Daily Data          10-20
+
+# Choose lag based on AIC (best for forecasting)
+best_p <- lag_sel$selection["AIC(n)"]
+
+cat("\nInitial VAR order chosen by AIC:", best_p, "\n")
+
+cat("
+---------------------------------------------
+INTERPRETING LAG CHOICE:
+- AIC  = best for forecasting (may choose high lags)
+- BIC  = best for stable, interpretable VAR (chooses small lags)
+---------------------------------------------
+")
+
+# ------------------------------
+# 6. ESTIMATE VAR MODEL
+# ------------------------------
+var_model <- VAR(train_xts, p = best_p, type = "const")
+
+cat("\nVAR Summary:\n")
+print(summary(var_model))
+
+# ------------------------------
+# 7. STABILITY CHECK (ROOTS TEST)
+# ------------------------------
+cat("\n==============================\n")
+cat("        VAR Stability Test        \n")
+cat("==============================\n")
+
+roots_val <- roots(var_model)
+print(roots_val)
+
+if(any(Mod(roots_val) >= 1)) {
+  cat("\n❌ VAR is NOT stable — at least one root >= 1\n")
+  cat("→ A different lag order (usually LOWER) is needed.\n")
+  cat("→ Try using BIC instead of AIC or reduce lag.max.\n")
+} else {
+  cat("\n✅ VAR is stable — all roots < 1 (inside unit circle)\n")
+}
+
+# ------------------------------
+# 8. SERIAL CORRELATION TEST
+# ------------------------------
+cat("\n==============================\n")
+cat(" Serial Correlation Test (Portmanteau)\n")
+cat("==============================\n")
+
+serial_test <- serial.test(var_model, lags.pt = 16, type = "PT.asymptotic")
+print(serial_test)
+
+p_ser <- serial_test$serial$p.value
+
+cat("
+---------------------------------------------
+HOW TO INTERPRET SERIAL CORRELATION:
+- Null hypothesis: NO serial correlation (GOOD)
+- If p-value > 0.05 → ✔ Good model (residuals are white noise)
+- If p-value < 0.05 → ❌ Bad model (residuals autocorrelated)
+  → Try a different lag order:
+      • Usually LOWER lag with BIC improves diagnostics
+      • High p from AIC often causes serial correlation
+---------------------------------------------
+")
+
+if(p_ser < 0.05) {
+  cat("\n❌ Serial correlation detected (p =", p_ser, ")")
+  cat("\n→ The model violates assumptions, forecasts unreliable.")
+  cat("\n→ Consider RE-ESTIMATING using BIC-selected lag.\n")
+} else {
+  cat("\n✅ No serial correlation (p =", p_ser, ") — model is acceptable.\n")
+}
+
+# ------------------------------
+# 9. BACKTEST FORECAST
+# ------------------------------
+h_test <- nrow(test_xts)
+fc <- predict(var_model, n.ahead = h_test)
+fc_y <- fc$fcst$y[, "fcst"]
+
+rmse_VAR <- rmse(test_y, fc_y)
+mae_VAR  <- mae(test_y, fc_y)
+mape_VAR <- mean(abs((test_y - fc_y) / test_y)) * 100
+
+cat("\nBacktest Error Metrics (VAR):\n")
+print(data.frame(RMSE=rmse_VAR, MAE=mae_VAR, MAPE=mape_VAR))
+
+# ------------------------------
+# 9B. PLOT ACTUAL VS FORECAST (BACKTEST)
+# ------------------------------
+plot(fc_y)
+
+
+# if the models performs best 
+# ------------------------------
+# 10. FUTURE FORECAST A (with future X)
+# ------------------------------
+future_dates <- seq(max(dates)+1, by="day", length.out=length(x_future))
+var_full <- VAR(data_xts, p = best_p, type = "const")
+
+fc_future <- predict(var_full, n.ahead = length(x_future))
+fc_future_y <- fc_future$fcst$y[, "fcst"]
+
+cat("\nFuture Forecast (Using future X):\n")
+print(fc_future_y)
+
+plot(fc_future_y, type = "l", main = "VAR Forecast — Future X")
+
+# ------------------------------
+# 11. FUTURE FORECAST B (constant X)
+# ------------------------------
+h_futureB <- 14
+fc_const <- predict(var_full, n.ahead = h_futureB)
+fc_const_y <- fc_const$fcst$y[, "fcst"]
+
+cat("\nFuture Forecast (Constant X):\n")
+print(fc_const_y)
+
+plot(fc_const_y, type="l", main="VAR Forecast — Constant X")
+
+
+
+
+
+############################################
+# WEEKLY VAR WORKFLOW — SAME STRUCTURE
+############################################
+options(scipen = 999)
+
+library(readxl)
+library(tseries)
+library(vars)
+library(lmtest)
+library(Metrics)
+
+# ------------------------------
+# 1. Load Data  (UPDATE)
+# ------------------------------
+df <- read_excel("file.xlsx", sheet = 1)
+df_future <- read_excel("file.xlsx", sheet = 3)
+
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+# ------------------------------
+# 2. Update variables (UPDATE)
+# ------------------------------
+y <- as.numeric(df$your_y)
+x <- as.numeric(df$your_x)
+x_future <- as.numeric(df_future$your_x)
+
+# ------------------------------
+# 3. Convert to WEEKLY ts
+# ------------------------------
+start_year <- as.numeric(format(min(df$date_column), "%Y"))
+start_week <- as.numeric(format(min(df$date_column), "%U"))
+
+data_ts <- ts(cbind(y, x), start = c(start_year, start_week), frequency = 52)
+
+# ------------------------------
+# 4. Train/Test Split
+# ------------------------------
+split <- floor(0.8 * nrow(data_ts))
+train <- data_ts[1:split, ]
+test  <- data_ts[(split+1):nrow(data_ts), ]
+test_y <- test[,1]
+
+# ------------------------------
+# 5. ADF tests
+# ------------------------------
+print(adf.test(train[,1]))
+print(adf.test(train[,2]))
+
+# ------------------------------
+# 6. Lag selection
+# ------------------------------
+lag_sel <- VARselect(train, lag.max = 12, type = "const")
+print(lag_sel)
+
+best_p <- lag_sel$selection["AIC(n)"]
+
+# ------------------------------
+# 7. Estimate VAR
+# ------------------------------
+var_model <- VAR(train, p = best_p)
+
+# ------------------------------
+# 8. Stability
+# ------------------------------
+print(roots(var_model))
+
+# ------------------------------
+# 9. Serial correlation test
+# ------------------------------
+serial_test <- serial.test(var_model, lags.pt = 12, type="PT.asymptotic")
+print(serial_test)
+
+# ------------------------------
+# 10. Backtest forecast
+# ------------------------------
+h <- nrow(test)
+
+fc <- predict(var_model, n.ahead = h)
+fc_y <- fc$fcst$y[, "fcst"]
+
+print(data.frame(
+  RMSE = rmse(test_y, fc_y),
+  MAE  = mae(test_y, fc_y),
+  MAPE = mean(abs((test_y - fc_y)/test_y))*100
+))
+
+plot(fc_y, type="l", main="Weekly VAR Backtest Forecast")
+
+# ------------------------------
+# 11. Future Forecast A (with future X)
+# ------------------------------
+var_full <- VAR(data_ts, p = best_p)
+fc_future <- predict(var_full, n.ahead = length(x_future))
+fc_future_y <- fc_future$fcst$y[, "fcst"]
+
+plot(fc_future_y, type="l", main="Weekly VAR Forecast — Future X")
+
+# ------------------------------
+# 12. Future Forecast B (constant X)
+# ------------------------------
+h_futureB <- 12
+fc_const <- predict(var_full, n.ahead = h_futureB)
+fc_const_y <- fc_const$fcst$y[, "fcst"]
+
+plot(fc_const_y, type="l", main="Weekly VAR Forecast — Constant X")
+
+
+
+
+
+############################################
+# MONTHLY VAR WORKFLOW — SAME STRUCTURE
+############################################
+options(scipen = 999)
+
+library(readxl)
+library(tseries)
+library(vars)
+library(lmtest)
+library(Metrics)
+
+df <- read_excel("file.xlsx", sheet=1)
+df_future <- read_excel("file.xlsx", sheet=3)
+
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+y <- as.numeric(df$your_y)
+x <- as.numeric(df$your_x)
+x_future <- as.numeric(df_future$your_x)
+
+start_year <- as.numeric(format(min(df$date_column), "%Y"))
+start_month <- as.numeric(format(min(df$date_column), "%m"))
+
+data_ts <- ts(cbind(y,x), start=c(start_year,start_month), frequency=12)
+
+split <- floor(0.8*nrow(data_ts))
+train <- data_ts[1:split,]
+test  <- data_ts[(split+1):nrow(data_ts),]
+test_y <- test[,1]
+
+print(adf.test(train[,1]))
+print(adf.test(train[,2]))
+
+lag_sel <- VARselect(train, lag.max=12, type="const")
+print(lag_sel)
+
+best_p <- lag_sel$selection["AIC(n)"]
+var_model <- VAR(train, p=best_p)
+
+print(roots(var_model))
+print(serial.test(var_model, lags.pt=12))
+
+h <- nrow(test)
+fc <- predict(var_model, n.ahead=h)
+fc_y <- fc$fcst$y[, "fcst"]
+
+print(data.frame(
+  RMSE=rmse(test_y,fc_y),
+  MAE=mae(test_y,fc_y),
+  MAPE=mean(abs((test_y-fc_y)/test_y))*100
+))
+
+plot(fc_y, type="l", main="Monthly VAR Backtest Forecast")
+
+var_full <- VAR(data_ts, p=best_p)
+fc_future <- predict(var_full, n.ahead=length(x_future))
+plot(fc_future$fcst$y[, "fcst"], type="l",
+     main="Monthly VAR Forecast — Future X")
+
+h_futureB <- 12
+fc_const <- predict(var_full, n.ahead=h_futureB)
+plot(fc_const$fcst$y[, "fcst"], main="Monthly VAR — Constant X")
+
+
+
+
+############################################
+# QUARTERLY VAR WORKFLOW
+############################################
+
+df <- read_excel("file.xlsx", sheet=1)
+df_future <- read_excel("file.xlsx", sheet=3)
+
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+y <- as.numeric(df$your_y)
+x <- as.numeric(df$your_x)
+x_future <- as.numeric(df_future$your_x)
+
+start_year <- as.numeric(format(min(df$date_column), "%Y"))
+start_quarter <- ceiling(as.numeric(format(min(df$date_column), "%m"))/3)
+
+data_ts <- ts(cbind(y,x),
+              start=c(start_year,start_quarter),
+              frequency=4)
+
+split <- floor(0.8*nrow(data_ts))
+train <- data_ts[1:split,]
+test  <- data_ts[(split+1):nrow(data_ts),]
+test_y <- test[,1]
+
+print(adf.test(train[,1]))
+print(adf.test(train[,2]))
+
+lag_sel <- VARselect(train, lag.max=8, type="const")
+best_p <- lag_sel$selection["AIC(n)"]
+
+var_model <- VAR(train, p=best_p)
+
+print(roots(var_model))
+print(serial.test(var_model, lags.pt=8))
+
+h <- nrow(test)
+fc <- predict(var_model, n.ahead=h)
+
+fc_y <- fc$fcst$y[, "fcst"]
+
+print(data.frame(
+  RMSE=rmse(test_y,fc_y),
+  MAE=mae(test_y,fc_y),
+  MAPE=mean(abs((test_y-fc_y)/test_y))*100
+))
+
+plot(fc_y, type="l", main="QuarterlyVAR Backtest")
+
+var_full <- VAR(data_ts, p=best_p)
+plot(predict(var_full, n.ahead=length(x_future))$fcst$y[,"fcst"],
+     type="l", main="Quarterly VAR — Future X")
+
+
+
+############################################
+# YEARLY VAR WORKFLOW
+############################################
+
+df <- read_excel("file.xlsx", sheet=1)
+df_future <- read_excel("file.xlsx", sheet=3)
+
+names(df) <- tolower(names(df))
+names(df_future) <- tolower(names(df_future))
+
+y <- as.numeric(df$your_y)
+x <- as.numeric(df$your_x)
+x_future <- as.numeric(df_future$your_x)
+
+start_year <- as.numeric(format(min(df$date_column), "%Y"))
+
+data_ts <- ts(cbind(y,x), start=start_year, frequency=1)
+
+split <- floor(0.8*nrow(data_ts))
+train <- data_ts[1:split,]
+test  <- data_ts[(split+1):nrow(data_ts),]
+test_y <- test[,1]
+
+print(adf.test(train[,1]))
+print(adf.test(train[,2]))
+
+lag_sel <- VARselect(train, lag.max=4, type="const")
+best_p <- lag_sel$selection["AIC(n)"]
+
+var_model <- VAR(train, p=best_p)
+
+print(roots(var_model))
+print(serial.test(var_model, lags.pt=4))
+
+h <- nrow(test)
+fc <- predict(var_model, n.ahead=h)
+fc_y <- fc$fcst$y[, "fcst"]
+
+print(data.frame(
+  RMSE=rmse(test_y,fc_y),
+  MAE=mae(test_y,fc_y),
+  MAPE=mean(abs((test_y-fc_y)/test_y))*100
+))
+
+plot(fc_y, type="l", main="Yearly VAR Backtest")
+
