@@ -1,0 +1,51 @@
+# create a trigger function and the trigger
+# create a trigger function such that updates to the ’customercurrent’ table trigger a new row to be written in ’customerhistory’.
+
+# Step 1.create the trigger 
+
+CREATE OR REPLACE FUNCTION bi_trigger.log_customer_changes()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Insert the old row into customer_history
+    INSERT INTO bi_trigger.customer_history (
+        customer_durable_sk,
+        effective_date,
+        ineffective_date,
+        current_indicator,
+        firstname,
+        location_postcode
+    )
+    VALUES (
+        OLD.customer_durable_sk,
+        OLD.last_update,           -- effective_date from current row
+        CURRENT_DATE,              -- set ineffective date to today
+        NULL,                      -- mark old as non-current
+        OLD.firstname,
+        OLD.location_postcode
+    );
+
+    -- Update the last_update of new row to current date
+    NEW.last_update := CURRENT_DATE;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+# Step 2: Create the trigger
+CREATE TRIGGER trg_customer_update
+BEFORE UPDATE ON bi_trigger.customer_current
+FOR EACH ROW
+EXECUTE FUNCTION bi_trigger.log_customer_changes();
+
+
+#step 3 make an update 
+
+Update bi_trigger.customer_current 
+set location_postcode = '32584'
+where firstname = 'Donald';
+
+Update bi_trigger.customer_current 
+set location_postcode = '73611'
+where firstname = 'Victoria';
+
+select * from bi_trigger.customer_history
