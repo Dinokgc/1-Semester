@@ -38,7 +38,10 @@ cron_save(file="my_schedule")
 cron_clear()
 
 #load cron jobs from a file 
-cron_load_file="my_schdule"
+cron_load(file="my_schedule")
 
-# Verify that they are active
+#list cron jobs 
 cron_ls()
+
+# Clear cron jobs 
+cron_clear()
