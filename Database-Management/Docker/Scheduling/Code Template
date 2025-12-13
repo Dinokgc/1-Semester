@@ -1,0 +1,24 @@
+library(cronR)
+cmd <- cron_rscript(rscript = "-path to file-")
+
+#Create cron jobs
+cron_add(cmd, frequency = 'minutely', id = 'job1', description = 'Our first cronR job', days_of_week=3)
+cron_add(cmd, frequency = 'daily', id = 'job2', description = 'Our 2nd cronR job', days_of_month=15)
+
+#list cron jobs 
+cron_ls()
+
+# Save cron jobs to a file 
+cron_save(file="my_schedule")
+
+# Clear cron jobs 
+cron_clear()
+
+#load cron jobs from a file 
+cron_load(file="my_schedule")
+
+#list cron jobs 
+cron_ls()
+
+# Clear cron jobs 
+cron_clear()

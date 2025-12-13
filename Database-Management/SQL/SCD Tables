@@ -1,0 +1,108 @@
+#Base Table 
+
+CREATE TABLE dim_product (
+    product_id INT PRIMARY KEY,          -- business key
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    price NUMERIC(10,2),
+    last_update TIMESTAMP
+);
+
+# SCD TYPE 1 — Overwrite (NO HISTORY)
+	# Concept
+	# Old values are lost
+	# Only current state stored
+UPDATE dim_product
+SET product_name = 'New Name',
+    category = 'New Category',
+    price = 99.99,
+    last_update = CURRENT_TIMESTAMP
+WHERE product_id = 1;
+
+# SCD TYPE 2 — Full History (MOST IMPORTANT)
+CREATE TABLE dim_product_hist (
+    product_hist_sk SERIAL PRIMARY KEY,  -- surrogate key
+    product_id_durable INT NOT NULL,      -- business key
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    price NUMERIC(10,2),
+    effective_date TIMESTAMP NOT NULL,
+    ineffective_date TIMESTAMP,
+    current_indicator BOOLEAN
+);
+
+# SCD TYPE 3 — Limited History (Previous value)
+# Table template
+ALTER TABLE dim_product
+ADD previous_category VARCHAR(100);
+
+# Update pattern 
+UPDATE dim_product
+SET previous_category = category,
+    category = 'New Category',
+    last_update = CURRENT_TIMESTAMP
+WHERE product_id = 1;
+
+# SCD TYPE 4 — Separate History Table (No current overwrite)
+# Current table
+CREATE TABLE dim_product_current (
+    product_id INT PRIMARY KEY,
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    price NUMERIC(10,2)
+);
+# History table
+CREATE TABLE dim_product_history (
+    product_id INT,
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    price NUMERIC(10,2),
+    change_date TIMESTAMP
+);
+
+# SCD TYPE 5 — Type 1 + Type 4 (Hybrid)
+	# Idea
+	# Current value overwritten (Type 1)
+	# Historical values stored separately (Type 4)
+# History table
+CREATE TABLE dim_product_history (
+    product_id INT,
+    category VARCHAR(100),
+    change_date TIMESTAMP
+);
+
+# Update Logic 
+INSERT INTO dim_product_history
+VALUES (OLD.product_id, OLD.category, CURRENT_TIMESTAMP);
+
+UPDATE dim_product
+SET category = 'New Category',
+    last_update = CURRENT_TIMESTAMP
+WHERE product_id = 1;
+
+# SCD TYPE 6 — Type 1 + 2 + 3 (MOST COMPLEX)
+CREATE TABLE dim_product (
+    product_sk SERIAL PRIMARY KEY,
+    product_id_durable INT,
+    product_name VARCHAR(255),
+    category_current VARCHAR(100),
+    category_previous VARCHAR(100),
+    price NUMERIC(10,2),
+    effective_date TIMESTAMP,
+    ineffective_date TIMESTAMP,
+    current_indicator BOOLEAN
+);
+
+# SCD TYPE 7 — Dual Surrogate & Natural Keys
+	# Concept
+	# Allows fact tables to join using:
+	# current surrogate key or historical surrogate key
+CREATE TABLE dim_product (
+    product_sk SERIAL PRIMARY KEY,
+    product_id_durable INT,
+    product_name VARCHAR(255),
+    category VARCHAR(100),
+    effective_date TIMESTAMP,
+    ineffective_date TIMESTAMP,
+    current_indicator BOOLEAN
+);

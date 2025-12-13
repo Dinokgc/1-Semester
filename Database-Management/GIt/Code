@@ -1,0 +1,32 @@
+# Setting up Git 
+git config --global user.name [username_from_github]
+ 
+git config --global user.email [email_from_github]
+ 
+git config --global credential.helper store
+ 
+# Run this to check if git is connected 
+git config --list
+ 
+#Change our branch name from “master” to “main” to align with Github  terminology 
+git branch -M main
+ 
+#Connect our local repository to the remote change URL 
+git remote add origin https://github.com/Dinokgc/R_Test.git
+
+#First time you push to the new repository, we do it in the container terminal from Rstudio: 
+git branch -M main  
+git push -u origin main
+
+#clone a REPOSITORY
+git clone [https link to repository]
+ 
+#Conflict:
+git config pull.rebase false
+
+# Clone into a specific folder name here folder is called Dino_test_R
+git clone https://github.com/nayelnoorani/-teeny-tiny-machine.git Dino_test_R 
+
+# Example: cloning into a specific directory
+cd ~/Documents/projects
+git clone https://github.com/nayelnoorani/-teeny-tiny-machine.git teeny_tiny_machine
