@@ -10,8 +10,8 @@ docker network create \
   --ip-range 10.0.42.128/25 \
   db_r_shiny
 
-#Create an Image change rstudio:1.0.0 to the name you want the image to be called and dockerfile_rstudio to the name of the file 
-docker image build --tag rstudio:1.3.0 -f dockerfile_Test2.txt .
+#Create an Image change rstudio:1.3.0 to the name you want the image to be called and dockerfile_rstudio to the name of the file 
+docker image build --tag rstudio:1.3.0 -f dockerfile_rstudio .
 
 # Create a Container conected to the network db_r_shiny and Image rstudio:1.3.0 change the volumne rstudio_data:/home/rstudio
 docker run -d --network db_r_shiny -p 8787:8787 -e PASSWORD=xxxxxxxxxx --name rstudio -v rstudio_data:/home/rstudio rstudio:1.3.0
